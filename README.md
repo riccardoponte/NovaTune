@@ -1,19 +1,26 @@
 # NovaTune PC Suite
 
+**[Italiano](#italiano) · [English](#english)**
+
+---
+
+## Italiano
+
 Applicazione desktop per Windows 10 (1809+) e Windows 11 (64 bit) che riunisce in un unico programma:
 
-- le funzioni di ottimizzazione di **AVG TuneUp**
+- ottimizzazione e pulizia del PC
 - **Driver Updater**
-- un **Uninstaller avanzato** (stile IObit Uninstaller)
+- un **Uninstaller avanzato**, con rimozione dei residui
 
-Interfaccia in italiano, tema scuro/chiaro. Il programma richiede i privilegi di amministratore, come gli originali.
+Interfaccia in italiano, tema scuro o chiaro. Il programma richiede i privilegi di amministratore.
 
-## Installazione
+### Installazione
 
 Scarica l'installer dalla pagina [Releases](../../releases/latest) ed eseguilo (`NovaTune-PC-Suite-Setup-1.0.0.exe`): puoi scegliere la cartella e vengono creati i collegamenti sul desktop e nel menu Start.
+L'eseguibile non è firmato digitalmente: SmartScreen può mostrare un avviso («Ulteriori informazioni» › «Esegui comunque»).
 La disinstallazione (da Impostazioni › App) rimuove anche le attività pianificate e le voci del menu contestuale create dall'app.
 
-## Funzioni
+### Funzioni
 
 | Area | Funzione | Come funziona |
 |---|---|---|
@@ -26,7 +33,7 @@ La disinstallazione (da Impostazioni › App) rimuove anche le attività pianifi
 | | Dati del browser | Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, Firefox: cache, cronologia, download, cookie, sessioni, moduli, dati dei siti |
 | | File grandi e duplicati | Ricerca su cartelle/unità, duplicati verificati con hash SHA-1 |
 | Risolvi problemi | Problemi di Windows | 28 controlli su sicurezza, Windows e privacy (UAC, firewall, antivirus, AutoEndTasks, tempi di arresto, Windows Update, condivisioni, Desktop remoto, telemetria…) |
-| | Pulizia del registro | 10 categorie come TuneUp (DLL condivise, Apri con, software obsoleto, MUI cache, font, App Paths, esecuzione automatica…) |
+| | Pulizia del registro | 10 categorie (DLL condivise, Apri con, software obsoleto, MUI cache, font, App Paths, esecuzione automatica…) |
 | | Collegamenti interrotti | Desktop, menu Start, Avvio rapido, Invia a |
 | Driver Updater | Aggiornamento driver | Inventario dispositivi, dispositivi con problemi, ricerca driver nel catalogo Windows Update, installazione con punto di ripristino e backup |
 | | Backup e ripristino | Esportazione con `pnputil`, ripristino, controllo automatico pianificato con notifica |
@@ -40,9 +47,14 @@ La disinstallazione (da Impostazioni › App) rimuove anche le attività pianifi
 | Altro | Centro annullamento | Ogni modifica (registro, collegamenti, avvio, sospensione, correzioni, residui) è annullabile; gestione punti di ripristino |
 | | Statistiche, Impostazioni | Contatori, grafico spazio liberato, elementi ignorati, temi, conservazione backup |
 
-Non replicata: **Cloud Cleaner** di TuneUp (richiede chiavi API registrate presso Google/Microsoft/Dropbox).
+### Da dove arrivano gli aggiornamenti
 
-## Sviluppo
+- **Driver:** dal catalogo ufficiale **Microsoft Windows Update**, tramite l'interfaccia Windows Update Agent integrata in Windows. Sono driver inviati a Microsoft dai produttori e firmati da Microsoft.
+- **Programmi:** da **Windows Package Manager (winget)**. Il catalogo ufficiale (`winget-pkgs`, gestito da Microsoft) indica l'installer originale del produttore e la sua impronta SHA-256; il file viene scaricato dal sito del produttore e verificato prima dell'installazione.
+
+NovaTune non distribuisce software di terze parti.
+
+### Sviluppo
 
 Requisiti: Node.js 20+.
 
@@ -58,3 +70,72 @@ Struttura:
 - `src/renderer` – interfaccia (HTML/CSS/JS senza framework), una vista per sezione in `views/`
 - `scripts/make-icon.js` – genera l'icona; `build/` – risorse dell'installer NSIS
 - Dati utente: `%APPDATA%\NovaTune PC Suite` (impostazioni, statistiche, backup del Centro annullamento)
+
+---
+
+## English
+
+Desktop application for Windows 10 (1809+) and Windows 11 (64-bit) that brings together in a single program:
+
+- PC optimization and cleanup
+- a **Driver Updater**
+- an **advanced Uninstaller** that removes leftovers
+
+The user interface is in Italian, with dark and light themes. The program requires administrator privileges.
+
+### Installation
+
+Download the installer from the [Releases](../../releases/latest) page and run it (`NovaTune-PC-Suite-Setup-1.0.0.exe`). You can choose the install folder; desktop and Start menu shortcuts are created.
+The executable is not digitally signed, so SmartScreen may show a warning ("More info" › "Run anyway").
+Uninstalling (Settings › Apps) also removes the scheduled tasks and context-menu entries created by the app.
+
+### Features
+
+| Area | Feature | How it works |
+|---|---|---|
+| Maintenance | One-click scan and cleanup, optionally scheduled (daily/weekly/monthly) | Disk + browser + shortcuts + registry cleanup; scheduling via Windows Task Scheduler |
+| Speed up | Sleep Mode | Groups startup entries, services and scheduled tasks by program and disables/re-enables them |
+| | Startup programs | Enable/disable like Task Manager (StartupApproved), delete entries with backup |
+| | Running processes | CPU/memory per process, end processes |
+| | Disk optimization | Fragmentation analysis, HDD defragmentation, SSD TRIM, error check/repair, SMART health |
+| Free up space | Disk cleanup | 17 categories (temp, caches, logs, dumps, Windows Update, Windows.old, Recycle Bin, restore points, app caches…) |
+| | Browser data | Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, Firefox: cache, history, downloads, cookies, sessions, form data, site data |
+| | Large and duplicate files | Search folders/drives; duplicates verified with SHA-1 hashes |
+| Fix problems | Windows problems | 28 security, Windows and privacy checks (UAC, firewall, antivirus, AutoEndTasks, shutdown timeouts, Windows Update, shares, Remote Desktop, telemetry…) |
+| | Registry cleaner | 10 categories (shared DLLs, Open With, obsolete software, MUI cache, fonts, App Paths, autorun…) |
+| | Broken shortcuts | Desktop, Start menu, Quick Launch, Send To |
+| Driver Updater | Driver updates | Device inventory, devices with problems, driver search in the Windows Update catalog, installation with restore point and backup |
+| | Backup and restore | Export with `pnputil`, restore, scheduled automatic check with notification |
+| Uninstaller | Programs | Full list, recently installed, large, rarely used; single or batch uninstall, silent mode, leftover scan and removal (files, registry, services, tasks) |
+| | Windows apps | Remove Store / preinstalled apps |
+| | Browser extensions | Chrome, Edge, Brave, Vivaldi, Opera, Firefox |
+| | Forced uninstall | Removes broken programs starting from their folder or name |
+| | Software Updater | Updates programs through Windows Package Manager (winget) and installs new ones |
+| Tools | Data shredder | Quick, random, DoD 5220.22-M, Gutmann; free-space wipe; Explorer context-menu entry |
+| | File recovery | Direct NTFS MFT reading, recovery-chance estimate, Recycle Bin restore |
+| Other | Undo Center | Every change (registry, shortcuts, startup, sleep, fixes, leftovers) can be undone; restore point management |
+| | Statistics, Settings | Counters, space-freed chart, ignored items, themes, backup retention |
+
+### Where updates come from
+
+- **Drivers:** from the official **Microsoft Windows Update** catalog, through the Windows Update Agent API built into Windows. These drivers are submitted to Microsoft by hardware manufacturers and signed by Microsoft.
+- **Programs:** from **Windows Package Manager (winget)**. The official catalog (`winget-pkgs`, maintained by Microsoft) points to each vendor's original installer and its SHA-256 hash; the file is downloaded from the vendor and verified before installation.
+
+NovaTune does not distribute any third-party software.
+
+### Development
+
+Requirements: Node.js 20+.
+
+```powershell
+npm install
+npm start          # run in development mode
+npm run dist       # build dist\NovaTune-PC-Suite-Setup-<version>.exe
+```
+
+Structure:
+
+- `src/main` – Electron main process; `modules/` holds one module per feature, `ps.js` runs PowerShell 5.1 scripts (available on every Windows 10/11)
+- `src/renderer` – user interface (framework-free HTML/CSS/JS), one view per section in `views/`
+- `scripts/make-icon.js` – generates the icon; `build/` – NSIS installer resources
+- User data: `%APPDATA%\NovaTune PC Suite` (settings, statistics, Undo Center backups)
