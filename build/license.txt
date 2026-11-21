@@ -1,0 +1,15 @@
+﻿NovaTune PC Suite - Contratto di licenza
+
+Installando questo software accetti quanto segue:
+
+1. NovaTune PC Suite modifica impostazioni di sistema, elimina file e voci di registro, aggiorna driver e disinstalla programmi su richiesta dell'utente. Tutte le modifiche al registro, ai collegamenti, all'avvio automatico e alle impostazioni di Windows vengono salvate nel Centro annullamento e possono essere annullate.
+
+2. Prima di aggiornare i driver o disinstallare programmi, NovaTune può creare un punto di ripristino di Windows. Si consiglia di mantenere attiva la protezione del sistema.
+
+3. Le funzioni "Distruggi dati" e "Cancella spazio libero" eliminano i dati in modo permanente: questi dati non possono essere recuperati in alcun modo.
+
+4. Gli aggiornamenti dei driver provengono dal catalogo ufficiale Microsoft Windows Update; gli aggiornamenti dei programmi provengono da Windows Package Manager (winget). NovaTune non distribuisce software di terze parti.
+
+5. Il software è fornito "così com'è", senza garanzie di alcun tipo. L'autore non è responsabile di eventuali perdite di dati o danni derivanti dall'uso del software.
+
+Requisiti: Windows 10 (versione 1809 o successiva) o Windows 11, 64 bit. Sono necessari i privilegi di amministratore.

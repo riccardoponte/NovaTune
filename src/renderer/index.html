@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>NovaTune PC Suite</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="titlebar">
+    <div class="tb-brand"><img src="assets/icon.png" alt=""><span>NovaTune <b>PC Suite</b></span></div>
+    <div class="tb-drag"></div>
+    <div class="tb-admin" id="adminBadge"></div>
+    <button class="tb-btn" id="tbMin" title="Riduci a icona"><svg viewBox="0 0 12 12"><path d="M2 6h8" /></svg></button>
+    <button class="tb-btn" id="tbMax" title="Ingrandisci"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" /></svg></button>
+    <button class="tb-btn tb-close" id="tbClose" title="Chiudi"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+  </div>
+  <div id="layout">
+    <nav id="sidebar"></nav>
+    <main id="view"></main>
+  </div>
+  <div id="toasts"></div>
+  <div id="modal-root"></div>
+
+  <script src="lib/ui.js"></script>
+  <script src="lib/icons.js"></script>
+  <script src="views/dashboard.js"></script>
+  <script src="views/maintenance.js"></script>
+  <script src="views/cleaning.js"></script>
+  <script src="views/speed.js"></script>
+  <script src="views/disks.js"></script>
+  <script src="views/fixes.js"></script>
+  <script src="views/drivers.js"></script>
+  <script src="views/uninstaller.js"></script>
+  <script src="views/software.js"></script>
+  <script src="views/tools.js"></script>
+  <script src="views/undo.js"></script>
+  <script src="views/stats.js"></script>
+  <script src="views/settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

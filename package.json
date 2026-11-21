@@ -1,0 +1,68 @@
+{
+  "name": "novatune-pc-suite",
+  "productName": "NovaTune PC Suite",
+  "version": "1.0.0",
+  "description": "Ottimizzazione PC, aggiornamento driver e disinstallazione avanzata per Windows 10/11",
+  "main": "src/main/main.js",
+  "author": "NovaTune",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node scripts/make-icon.js",
+    "dist": "node scripts/make-icon.js && electron-builder --win nsis --x64",
+    "dist:all": "node scripts/make-icon.js && electron-builder --win nsis portable --x64 --ia32"
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.novatune.pcsuite",
+    "productName": "NovaTune PC Suite",
+    "copyright": "Copyright © 2026 NovaTune",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator",
+      "artifactName": "NovaTune-PC-Suite-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NovaTune PC Suite",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "it_IT",
+        "en_US"
+      ],
+      "language": "1040",
+      "include": "build/installer.nsh",
+      "license": "build/license.txt",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "allowScripts": {
+    "electron@38.8.6": true
+  }
+}
