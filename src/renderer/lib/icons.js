@@ -47,6 +47,7 @@
     usb: '<path d="M12 2v15"/><circle cx="12" cy="19" r="2"/><path d="M12 13l-4-3V7M12 11l4-2V6"/><rect x="7" y="5" width="2" height="2"/><circle cx="16" cy="5" r="1"/>',
     windows: '<path d="M3 5.5l7.5-1v7H3zM12.5 4.2L21 3v8.5h-8.5zM3 12.5h7.5v7L3 18.5zM12.5 12.5H21V21l-8.5-1.2z"/>',
     activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    bandage: '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10 10h.01M14 14h.01M10 14h.01M14 10h.01"/>',
     backup: '<path d="M4 7h16v13H4z"/><path d="M4 7l2-4h12l2 4"/><path d="M12 11v6M9 14l3 3 3-3"/>'
   };
   window.Icons = { get: (n, cls) => `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n] || P.info}</svg>`, names: Object.keys(P) };

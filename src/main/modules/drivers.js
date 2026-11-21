@@ -73,40 +73,149 @@ async function install(opts = {}, ctx = {}) {
   const ids = opts.ids || lastUpdates.filter((u) => !u.ignored).map((u) => u.id);
   if (!ids.length) return { results: [] };
   if (store.settings().createRestorePoint) {
-    if (ctx.progress) ctx.progress({ percent: 2, label: 'Creazione di un punto di ripristino…' });
+    if (ctx.progress) ctx.progress({ phase: 'setup', percent: 2, label: 'Creazione di un punto di ripristino…' });
     const rp = await undo.createRestorePoint('NovaTune - Prima dell\'aggiornamento driver');
     if (rp && rp.ok) undo.add({ type: 'restorepoint', title: 'Punto di ripristino creato prima dell\'aggiornamento dei driver', detail: 'Usa Ripristino configurazione di sistema per annullare.', data: {} });
   }
   // backup current drivers of affected devices first
-  if (ctx.progress) ctx.progress({ percent: 5, label: 'Backup dei driver attuali…' });
+  if (ctx.progress) ctx.progress({ phase: 'setup', percent: 5, label: 'Backup dei driver attuali…' });
   try { await backup({ label: 'Prima dell\'aggiornamento' }); } catch (e) {}
-  const r = await ps.run(`
+  const r = await runWuJob(ids, false, ctx);
+  const results = ps.arr(r.result);
+  const okN = results.filter((x) => x.ok).length;
+  store.addStat('driversUpdated', okN, { type: 'drivers', items: okN });
+  return { results, reboot: results.some((x) => x.reboot), cancelled: cancelRequested };
+}
+
+// Windows Update download/install with real progress.
+// BeginDownload/BeginInstall need COM callback objects: a tiny C# class provides them (they do nothing,
+// progress is read by polling the job). If that is not possible, the synchronous calls are used.
+const WU_JOB = `
+$cbOk = $true
+try {
+  Add-Type -ErrorAction Stop -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace NovaTuneWu {
+  [ComImport, Guid("8C3F1CDD-6173-4591-AEBD-A56A53CA77C1"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IDownloadProgressChangedCallback { void Invoke([MarshalAs(UnmanagedType.IUnknown)] object job, [MarshalAs(UnmanagedType.IUnknown)] object args); }
+  [ComImport, Guid("77254866-9F5B-4C8E-B9E2-C77A8530D64B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IDownloadCompletedCallback { void Invoke([MarshalAs(UnmanagedType.IUnknown)] object job, [MarshalAs(UnmanagedType.IUnknown)] object args); }
+  [ComImport, Guid("E01402D5-F8DA-43BA-A012-38894BD048F1"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IInstallationProgressChangedCallback { void Invoke([MarshalAs(UnmanagedType.IUnknown)] object job, [MarshalAs(UnmanagedType.IUnknown)] object args); }
+  [ComImport, Guid("45F4F6F3-D602-4F98-9A8A-3EFA152AD2D3"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IInstallationCompletedCallback { void Invoke([MarshalAs(UnmanagedType.IUnknown)] object job, [MarshalAs(UnmanagedType.IUnknown)] object args); }
+  [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
+  public class Callback : IDownloadProgressChangedCallback, IDownloadCompletedCallback, IInstallationProgressChangedCallback, IInstallationCompletedCallback {
+    public void Invoke(object job, object args) { }
+  }
+}
+'@
+} catch { $cbOk = $false }
 $s = New-Object -ComObject Microsoft.Update.Session
 $s.ClientApplicationID = 'NovaTune PC Suite'
 $searcher = $s.CreateUpdateSearcher()
 $results = @()
+$n = $A.ids.Count
 $i = 0
-foreach ($id in $A) {
+$stopFile = $A.stopFile
+foreach ($id in $A.ids) {
   $i++
-  $pct = [int](($i - 1) * 100 / $A.Count)
+  if ($stopFile -and (Test-Path -LiteralPath $stopFile)) { $results += @{ id = $id; ok = $false; cancelled = $true; error = 'Annullato' }; Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'cancelled' }; continue }
   try {
-    Emit-Progress @{ percent = $pct; label = "Ricerca del driver $i di $($A.Count)…"; id = $id }
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'prepare'; message = 'Ricerca del driver nel catalogo Windows Update…' }
     $res = $searcher.Search("UpdateID='$id'")
-    if ($res.Updates.Count -eq 0) { $results += @{ id = $id; ok = $false; error = 'Aggiornamento non più disponibile' }; continue }
+    if ($res.Updates.Count -eq 0) { $results += @{ id = $id; ok = $false; error = 'Aggiornamento non più disponibile' }; Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'error'; message = 'Aggiornamento non più disponibile' }; continue }
     $coll = New-Object -ComObject Microsoft.Update.UpdateColl
     foreach ($u in $res.Updates) { if (-not $u.EulaAccepted) { $u.AcceptEula() }; [void]$coll.Add($u) }
-    Emit-Progress @{ percent = $pct; label = "Download: $($res.Updates.Item(0).Title)"; id = $id }
-    $dl = $s.CreateUpdateDownloader(); $dl.Updates = $coll; $dr = $dl.Download()
-    Emit-Progress @{ percent = $pct; label = "Installazione: $($res.Updates.Item(0).Title)"; id = $id }
-    $inst = $s.CreateUpdateInstaller(); $inst.Updates = $coll; $ir = $inst.Install()
-    $results += @{ id = $id; ok = ($ir.ResultCode -eq 2 -or $ir.ResultCode -eq 3); code = [int]$ir.ResultCode; reboot = [bool]$ir.RebootRequired; hresult = $ir.HResult }
-  } catch { $results += @{ id = $id; ok = $false; error = $_.Exception.Message } }
+    $title = $res.Updates.Item(0).Title
+    $size = [int64]$res.Updates.Item(0).MaxDownloadSize
+    # ---- download
+    $dl = $s.CreateUpdateDownloader(); $dl.Updates = $coll
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'download'; percent = 0; received = 0; total = $size; message = $title }
+    $dr = $null
+    if ($cbOk) {
+      try {
+        $cb = New-Object NovaTuneWu.Callback
+        $job = $dl.BeginDownload($cb, $cb, $null)
+        while (-not $job.IsCompleted) {
+          $p = $job.GetProgress()
+          $tot = [int64]$p.TotalBytesToDownload; if (-not $tot) { $tot = $size } else { $size = $tot }
+          Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'download'; percent = [int]$p.PercentComplete; received = [int64]$p.TotalBytesDownloaded; total = $tot; message = $title }
+          if ($stopFile -and (Test-Path -LiteralPath $stopFile)) { $job.RequestAbort() }
+          Start-Sleep -Milliseconds 400
+        }
+        $dr = $dl.EndDownload($job)
+      } catch { $dr = $null; $cbOk = $false }
+    }
+    if (-not $dr) { $dr = $dl.Download() }
+    if ($stopFile -and (Test-Path -LiteralPath $stopFile)) { $results += @{ id = $id; ok = $false; cancelled = $true; error = 'Annullato' }; Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'cancelled' }; continue }
+    if ($dr.ResultCode -ne 2 -and $dr.ResultCode -ne 3) { $results += @{ id = $id; ok = $false; code = [int]$dr.ResultCode; error = 'Download non riuscito' }; Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'error'; message = 'Download non riuscito' }; continue }
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'download'; percent = 100; received = $size; total = $size; message = $title }
+    if ($A.downloadOnly) { $results += @{ id = $id; ok = $true; downloadedOnly = $true }; Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'done'; message = 'Scaricato' }; continue }
+    # ---- install
+    $inst = $s.CreateUpdateInstaller(); $inst.Updates = $coll
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'install'; percent = 0; message = 'Installazione del driver…' }
+    $ir = $null
+    if ($cbOk) {
+      try {
+        $cb = New-Object NovaTuneWu.Callback
+        $ij = $inst.BeginInstall($cb, $cb, $null)
+        while (-not $ij.IsCompleted) {
+          $p = $ij.GetProgress()
+          Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'install'; percent = [int]$p.PercentComplete; message = 'Installazione del driver…' }
+          Start-Sleep -Milliseconds 400
+        }
+        $ir = $inst.EndInstall($ij)
+      } catch { $ir = $null }
+    }
+    if (-not $ir) { $ir = $inst.Install() }
+    $ok = ($ir.ResultCode -eq 2 -or $ir.ResultCode -eq 3)
+    $results += @{ id = $id; ok = $ok; code = [int]$ir.ResultCode; reboot = [bool]$ir.RebootRequired; hresult = $ir.HResult }
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = $(if ($ok) { 'done' } else { 'error' }); reboot = [bool]$ir.RebootRequired; message = $(if ($ok) { if ($ir.RebootRequired) { 'Installato · riavvio necessario' } else { 'Installato' } } else { 'Installazione non riuscita (codice ' + [int]$ir.ResultCode + ')' }) }
+  } catch {
+    $results += @{ id = $id; ok = $false; error = $_.Exception.Message }
+    Emit-Progress @{ id = $id; index = $i - 1; count = $n; phase = 'error'; message = $_.Exception.Message }
+  }
 }
-Emit-Result @($results)`, { args: ids, onProgress: (p) => ctx.progress && ctx.progress(Object.assign(p, { percent: 10 + Math.round(p.percent * 0.9) })), timeout: 3600000 });
-  const results = ps.arr(r.result);
-  const okN = results.filter((x) => x.ok).length;
-  store.addStat('driversUpdated', okN, { type: 'drivers', items: okN });
-  return { results, reboot: results.some((x) => x.reboot) };
+Emit-Result @{ results = @($results); callbacks = $cbOk }
+`;
+
+let cancelRequested = false;
+let stopFile = null;
+
+async function runWuJob(ids, downloadOnly, ctx) {
+  cancelRequested = false;
+  stopFile = path.join(os.tmpdir(), `novatune_drv_stop_${Date.now()}`);
+  try {
+    const r = await ps.run(WU_JOB, {
+      args: { ids, downloadOnly: !!downloadOnly, stopFile },
+      timeout: 3 * 3600000,
+      onProgress: (p) => {
+        if (!ctx.progress) return;
+        let frac = 0;
+        if (p.phase === 'download') frac = ((p.percent || 0) / 100) * 0.75;
+        else if (p.phase === 'install') frac = 0.75 + ((p.percent || 0) / 100) * 0.25;
+        else if (['done', 'error', 'cancelled'].includes(p.phase)) frac = 1;
+        const overall = Math.round(10 + (((p.index || 0) + frac) / (p.count || 1)) * 90);
+        ctx.progress(Object.assign({}, p, { overall, label: `Driver ${(p.index || 0) + 1} di ${p.count}` }));
+      }
+    });
+    const res = r.result || {};
+    return { result: ps.arr(res.results), callbacks: res.callbacks };
+  } finally { try { fs.unlinkSync(stopFile); } catch (e) {} stopFile = null; }
+}
+
+function cancel() {
+  cancelRequested = true;
+  if (stopFile) { try { fs.writeFileSync(stopFile, '1'); } catch (e) {} }
+  return { ok: true };
+}
+
+/** Download only (no install): used to verify the progress pipeline */
+async function downloadOnly(opts, ctx = {}) {
+  const r = await runWuJob(opts.ids, true, ctx);
+  return { results: r.result, callbacks: r.callbacks };
 }
 
 function backupRoot() {
@@ -158,4 +267,4 @@ async function rescanDevices() {
   return { ok: r.code === 0 };
 }
 
-module.exports = { inventory, scan, install, backup, listBackups, restore, deleteBackup, rescanDevices, backupRoot };
+module.exports = { inventory, scan, install, cancel, downloadOnly, backup, listBackups, restore, deleteBackup, rescanDevices, backupRoot };

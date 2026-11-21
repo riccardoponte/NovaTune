@@ -67,6 +67,7 @@ const DEFAULT_STATS = {
   driversUpdated: 0,
   filesShredded: 0,
   filesRecovered: 0,
+  filesRepaired: 0,
   defragRuns: 0,
   problemsFixed: 0,
   programsSleeping: 0,

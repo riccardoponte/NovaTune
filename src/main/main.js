@@ -24,7 +24,8 @@ const modules = {
   undo: require('./modules/undo'),
   drivers: require('./modules/drivers'),
   uninstaller: require('./modules/uninstaller'),
-  files: require('./modules/files')
+  files: require('./modules/files'),
+  repair: require('./modules/repair')
 };
 
 // node:sqlite prints an ExperimentalWarning: keep the console clean
@@ -85,14 +86,20 @@ function createWindow() {
     width: 1280, height: 820, minWidth: 1024, minHeight: 680,
     frame: false, backgroundColor: '#0f1222', show: false,
     icon: iconPath(), title: 'NovaTune PC Suite',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, plugins: true }
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => { if (!flag('--tray')) win.show(); });
+  win.once('ready-to-show', () => {
+    if (flag('--tray')) return;
+    // start maximized; "restore" brings back the default 1280x820 centred window
+    win.maximize();
+    win.show();
+  });
   win.on('close', (e) => {
     if (!quitting && store.settings().minimizeToTray) { e.preventDefault(); win.hide(); }
   });
   win.on('maximize', () => win.webContents.send('win-state', 'max'));
+  win.webContents.on('did-finish-load', () => { if (win.isMaximized()) win.webContents.send('win-state', 'max'); });
   win.on('unmaximize', () => win.webContents.send('win-state', 'normal'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -143,6 +150,23 @@ ipcMain.handle('stats:reset', () => { const s = store.stats(); for (const k of O
 ipcMain.handle('dialog:open', async (e, opts) => {
   const r = await dialog.showOpenDialog(win, opts || {});
   return r.canceled ? [] : r.filePaths;
+});
+ipcMain.handle('dialog:save', async (e, opts) => {
+  const r = await dialog.showSaveDialog(win, opts || {});
+  return r.canceled ? null : r.filePath;
+});
+// PDF preview: opened in its own window (Chromium PDF viewer) from a temporary copy
+ipcMain.handle('preview:pdf', async (e, data, name) => {
+  const os = require('os');
+  const dir = path.join(os.tmpdir(), 'NovaTune-anteprime');
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, `${Date.now()}_${String(name || 'anteprima.pdf').replace(/[<>:"/\\|?*]/g, '_')}`);
+  fs.writeFileSync(f, Buffer.from(data));
+  const w = new BrowserWindow({ width: 900, height: 1000, title: `Anteprima – ${name || ''}`, icon: iconPath(), autoHideMenuBar: true, webPreferences: { plugins: true, contextIsolation: true, nodeIntegration: false } });
+  w.setMenu(null);
+  w.on('closed', () => { try { fs.unlinkSync(f); } catch (er) {} });
+  await w.loadFile(f);
+  return { ok: true };
 });
 ipcMain.handle('shell:open', (e, target) => {
   if (/^(https?:|ms-settings:|windowsdefender:)/.test(target)) return shell.openExternal(target);

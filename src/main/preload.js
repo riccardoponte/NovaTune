@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   stats: () => ipcRenderer.invoke('stats:get'),
   resetStats: () => ipcRenderer.invoke('stats:reset'),
   openDialog: (opts) => ipcRenderer.invoke('dialog:open', opts),
+  saveDialog: (opts) => ipcRenderer.invoke('dialog:save', opts),
+  openPdf: (data, name) => ipcRenderer.invoke('preview:pdf', data, name),
   open: (target) => ipcRenderer.invoke('shell:open', target),
   showInFolder: (p) => ipcRenderer.invoke('shell:show', p),
   appInfo: () => ipcRenderer.invoke('app:info'),

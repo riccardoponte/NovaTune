@@ -1,7 +1,7 @@
 {
   "name": "novatune-pc-suite",
   "productName": "NovaTune PC Suite",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Ottimizzazione PC, aggiornamento driver e disinstallazione avanzata per Windows 10/11",
   "main": "src/main/main.js",
   "author": "NovaTune",

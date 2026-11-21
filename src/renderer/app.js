@@ -8,7 +8,7 @@
     { group: 'Risolvi problemi', items: [{ id: 'fixes', label: 'Problemi di Windows', icon: 'shield' }, { id: 'registry', label: 'Pulizia del registro', icon: 'cube' }, { id: 'shortcuts', label: 'Collegamenti interrotti', icon: 'link' }] },
     { group: 'Driver Updater', items: [{ id: 'drivers', label: 'Aggiornamento driver', icon: 'chip' }, { id: 'driverBackup', label: 'Backup e ripristino driver', icon: 'backup' }] },
     { group: 'Uninstaller', items: [{ id: 'programs', label: 'Programmi', icon: 'apps' }, { id: 'storeapps', label: 'App di Windows', icon: 'windows' }, { id: 'extensions', label: 'Estensioni del browser', icon: 'puzzle' }, { id: 'forced', label: 'Disinstallazione forzata', icon: 'hammer' }, { id: 'software', label: 'Software Updater', icon: 'refresh' }] },
-    { group: 'Strumenti', items: [{ id: 'shredder', label: 'Distruggi dati', icon: 'shred' }, { id: 'recovery', label: 'Recupero file', icon: 'lifebuoy' }] },
+    { group: 'Strumenti', items: [{ id: 'shredder', label: 'Distruggi dati', icon: 'shred' }, { id: 'recovery', label: 'Recupero file', icon: 'lifebuoy' }, { id: 'repair', label: 'Riparazione file', icon: 'bandage' }] },
     { group: 'Altro', items: [{ id: 'undo', label: 'Centro annullamento', icon: 'undo' }, { id: 'stats', label: 'Statistiche', icon: 'chart' }, { id: 'settings', label: 'Impostazioni', icon: 'gear' }] }
   ];
 
@@ -48,8 +48,16 @@
 
   async function init() {
     document.getElementById('tbMin').onclick = () => api.win.minimize();
-    document.getElementById('tbMax').onclick = () => api.win.maximize();
-    document.getElementById('tbClose').onclick = () => api.win.close();
+    const tbMax = document.getElementById('tbMax');
+    tbMax.onclick = () => api.win.maximize();
+    const setMaxIcon = (state) => {
+      const max = state === 'max';
+      tbMax.title = max ? 'Ripristina' : 'Ingrandisci';
+      tbMax.innerHTML = max
+        ? '<svg viewBox="0 0 12 12"><rect x="2.5" y="4" width="5.5" height="5.5" /><path d="M4.5 4V2.5H9.5V7.5H8" /></svg>'
+        : '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" /></svg>';
+    };
+    api.on('win-state', setMaxIcon);    document.getElementById('tbClose').onclick = () => api.win.close();
     App.settings = await api.settings();
     App.applyTheme(App.settings.theme);
     App.info = await api.appInfo();

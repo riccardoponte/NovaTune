@@ -75,25 +75,141 @@
         }
       }
       let onlyThird = true;
-      async function install(ids) {
+      function install(ids) {
         if (!ids.length) return;
         if (!App.isAdmin) { UI.toast('L\'installazione dei driver richiede l\'esecuzione come amministratore.', 'err'); return; }
-        tabsSlot.innerHTML = ''; body.innerHTML = '';
-        const p = UI.busyPanel(`Aggiornamento di ${ids.length} driver…`); body.appendChild(p);
-        const r = await UI.run('drivers', 'install', { ids }, p).catch(() => null);
-        body.innerHTML = '';
-        if (!r) { drawTabs(); render(); return; }
-        const ok = r.results.filter((x) => x.ok).length;
-        body.appendChild(h('div', { class: 'card', style: { textAlign: 'center', padding: '36px' } },
-          h('div', { class: 'empty-ic', html: Icons.get(ok === ids.length ? 'check' : 'alert') }),
-          h('h2', null, `${ok} di ${ids.length} driver aggiornati`),
-          r.results.filter((x) => !x.ok).map((x) => h('p', { class: 'muted' }, (data.updates.find((u) => u.id === x.id) || {}).device + ': ' + (x.error || 'installazione non riuscita (codice ' + x.code + ')'))),
-          r.reboot ? h('div', { class: 'notice warn mt', html: Icons.get('alert') + '<div>Riavvia il PC per completare l\'installazione dei driver.</div>' }) : null,
-          h('div', { class: 'row mt', style: { justifyContent: 'center' } }, r.reboot ? btn('Riavvia ora', () => api.reboot(), 'primary') : null, btn('Analizza di nuovo', scan, 'ghost'))));
+        if (App.driverJob && !App.driverJob.finished) { showJob(); return; }
+        startDriverJob(ids.map((id) => { const u = data.updates.find((x) => x.id === id) || {}; return { id, name: u.device || u.model || u.title, from: u.currentVersion, to: u.newVersion, size: u.size }; }));
+        showJob();
       }
-      if (data) { drawTabs(); render(); } else intro();
+
+      function showJob() {
+        const job = App.driverJob;
+        tabsSlot.innerHTML = ''; body.innerHTML = '';
+        const overallBar = h('div', { class: 'bar-fill' });
+        const overallLbl = h('div', { class: 'muted' });
+        const cancelBtn = btn('Annulla', async () => {
+          if (!(await UI.confirmBox('Annullare l\'aggiornamento dei driver?', 'Il download in corso verrà interrotto e i driver in coda non verranno installati. Un driver già in fase di installazione verrà completato.', 'Annulla aggiornamento', 'danger'))) return;
+          api.call('drivers', 'cancel');
+        }, 'ghost', 'stop');
+        const doneSlot = h('div');
+        body.appendChild(h('div', { class: 'card mb' },
+          h('div', { class: 'row between' }, h('h3', { style: { margin: 0 } }, 'Aggiornamento dei driver'), cancelBtn),
+          h('div', { class: 'bar mt', style: { width: '100%', maxWidth: 'none' } }, overallBar), h('div', { class: 'row between mt' }, overallLbl), doneSlot));
+        const list = h('div', { class: 'list' });
+        const rows = job.items.map((it) => { const r = driverRow(it); list.appendChild(r); return r; });
+        body.appendChild(list);
+        const paint = () => {
+          rows.forEach((r) => r.paint());
+          overallBar.style.width = Math.max(2, job.overall) + '%';
+          const cur = job.items.findIndex((i) => !['done', 'error', 'cancelled'].includes(i.phase));
+          overallLbl.textContent = job.finished
+            ? `Completato: ${job.items.filter((i) => i.phase === 'done').length} di ${job.items.length} driver aggiornati`
+            : job.setup ? job.setup : `Driver ${Math.max(1, cur + 1)} di ${job.items.length} · ${job.overall}% complessivo`;
+          cancelBtn.style.display = job.finished ? 'none' : '';
+          if (job.finished && !doneSlot.childNodes.length) {
+            if (job.reboot) doneSlot.appendChild(h('div', { class: 'notice warn mt', html: Icons.get('alert') + '<div>Riavvia il PC per completare l\'installazione dei driver.</div>' }));
+            doneSlot.appendChild(h('div', { class: 'row mt' }, job.reboot ? btn('Riavvia ora', () => api.reboot(), 'primary') : null, btn('Analizza di nuovo', () => { App.driverJob = null; scan(); }, job.reboot ? 'ghost' : 'primary', 'refresh'), btn('Torna all\'elenco', () => { App.driverJob = null; drawTabs(); render(); }, 'ghost')));
+          }
+        };
+        job.onChange = paint;
+        paint();
+      }
+
+      function fmtTime(s) {
+        if (!isFinite(s) || s < 1) return '';
+        s = Math.round(s);
+        return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+      }
+
+      function driverRow(it) {
+        const fill = h('div', { class: 'bar-fill' });
+        const bar = h('div', { class: 'bar', style: { width: '100%', maxWidth: 'none', height: '6px' } }, fill);
+        const status = h('div', { class: 'd' });
+        const tag = h('span', { class: 'tag' });
+        const el = h('div', { class: 'item', style: { alignItems: 'flex-start' } },
+          h('div', { style: { width: '34px', height: '34px', borderRadius: '8px', background: 'var(--panel2)', display: 'grid', placeItems: 'center', flex: 'none' }, html: Icons.get('chip') }),
+          h('div', { class: 'grow' },
+            h('div', { class: 'row between' }, h('div', { class: 't' }, it.name, it.to ? h('span', { class: 'faint mono', style: { fontWeight: 400, fontSize: '12px', marginLeft: '8px' } }, `${it.from || ''} → ${it.to}`) : null), tag),
+            h('div', { style: { margin: '8px 0 6px' } }, bar), status));
+        el.paint = () => {
+          const B = UI.bytes;
+          const indet = it.phase === 'prepare' || (it.phase === 'install' && !it.percent);
+          bar.classList.toggle('indet', indet);
+          fill.style.background = it.phase === 'error' ? 'var(--err)' : it.phase === 'done' ? 'var(--ok)' : it.phase === 'cancelled' ? 'var(--faint)' : '';
+          let pct = 0, txt = '', tg = ['In coda', ''];
+          switch (it.phase) {
+            case 'queued': txt = 'In attesa…'; break;
+            case 'prepare': txt = it.message || 'Ricerca del driver…'; tg = ['Preparazione', 'info']; break;
+            case 'download': {
+              pct = it.percent || 0;
+              const parts = ['Download'];
+              if (it.total) parts.push(`${B(it.received || 0)} di ${B(it.total)}`);
+              if (it.speed > 0) parts.push(`${B(it.speed)}/s`);
+              if (it.speed > 0 && it.total && it.received < it.total) { const eta = fmtTime((it.total - it.received) / it.speed); if (eta) parts.push(`${eta} rimanenti`); }
+              txt = parts.join(' · ');
+              tg = [`Download ${pct}%`, 'info'];
+              break;
+            }
+            case 'install': pct = it.percent || 0; txt = it.percent ? `Installazione del driver… ${it.percent}%` : 'Installazione del driver…'; tg = ['Installazione', 'violet']; break;
+            case 'done': pct = 100; txt = it.message || 'Installato'; tg = ['Aggiornato', 'ok']; break;
+            case 'error': pct = 100; txt = it.message || 'Non riuscito'; tg = ['Errore', 'err']; break;
+            case 'cancelled': pct = 100; txt = 'Annullato'; tg = ['Annullato', '']; break;
+          }
+          fill.style.width = indet ? '' : Math.max(it.phase === 'queued' ? 0 : 2, pct) + '%';
+          status.textContent = txt;
+          tag.textContent = tg[0]; tag.className = 'tag ' + tg[1];
+        };
+        return el;
+      }
+
+      if (App.driverJob) showJob();
+      else if (data) { drawTabs(); render(); } else intro();
+      return () => { if (App.driverJob) App.driverJob.onChange = null; };
     }
   };
+
+  /** Driver update job: state lives in App.driverJob so it survives navigation. */
+  function startDriverJob(items) {
+    const job = App.driverJob = { items: items.map((i) => Object.assign({ phase: 'queued' }, i)), overall: 0, finished: false, setup: 'Preparazione…', onChange: null };
+    const fire = () => { if (job.onChange) job.onChange(); };
+    const off = UI.onProgress((p) => {
+      if (p.mod !== 'drivers' || p.fn !== 'install') return;
+      if (p.phase === 'setup') { job.setup = p.label; job.overall = p.percent || job.overall; fire(); return; }
+      job.setup = null;
+      const it = job.items.find((i) => i.id === p.id);
+      if (!it) return;
+      if (p.phase === 'download') {
+        const now = Date.now();
+        if (it.phase !== 'download') { it.dlStart = now; it.dlStartBytes = p.received || 0; }
+        const el = (now - it.dlStart) / 1000;
+        it.speed = el > 0.8 ? ((p.received || 0) - it.dlStartBytes) / el : 0;
+      }
+      for (const k of ['phase', 'percent', 'received', 'total', 'message']) if (p[k] !== undefined) it[k] = p[k];
+      if (p.overall != null) job.overall = p.overall;
+      fire();
+    });
+    api.call('drivers', 'install', { ids: items.map((i) => i.id) }).then((r) => {
+      for (const res of r.results) {
+        const it = job.items.find((i) => i.id === res.id);
+        if (!it) continue;
+        it.phase = res.cancelled ? 'cancelled' : res.ok ? 'done' : 'error';
+        if (!res.ok && !res.cancelled) it.message = res.error || `Installazione non riuscita (codice ${res.code})`;
+        if (res.ok) it.message = res.reboot ? 'Installato · riavvio necessario' : 'Installato';
+      }
+      job.reboot = r.reboot;
+      const ok = job.items.filter((i) => i.phase === 'done').length;
+      UI.toast(`${ok} di ${items.length} driver aggiornati`, ok === items.length ? 'ok' : 'warn');
+      if (App.cache.drivers) {
+        const done = new Set(job.items.filter((i) => i.phase === 'done').map((i) => i.id));
+        App.cache.drivers.updates = App.cache.drivers.updates.filter((u) => !done.has(u.id));
+        App.setBadge('drivers', App.cache.drivers.updates.filter((u) => !u.ignored).length);
+      }
+    }).catch((e) => {
+      job.items.forEach((i) => { if (!['done', 'error', 'cancelled'].includes(i.phase)) { i.phase = 'error'; i.message = UI.cleanErr(e); } });
+      UI.toast(UI.cleanErr(e), 'err', 7000);
+    }).finally(() => { job.finished = true; job.overall = 100; job.setup = null; off(); fire(); });
+  }
 
   UI.Views.driverBackup = {
     render(root) {
