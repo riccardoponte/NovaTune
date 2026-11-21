@@ -16,7 +16,7 @@ Interfaccia in italiano, tema scuro o chiaro. Il programma richiede i privilegi 
 
 ### Installazione
 
-Scarica l'installer dalla pagina [Releases](../../releases/latest) ed eseguilo (`NovaTune-PC-Suite-Setup-1.0.0.exe`): puoi scegliere la cartella e vengono creati i collegamenti sul desktop e nel menu Start.
+Scarica l'installer dalla pagina [Releases](../../releases/latest) ed eseguilo (`NovaTune-PC-Suite-Setup-<versione>.exe`): puoi scegliere la cartella e vengono creati i collegamenti sul desktop e nel menu Start.
 L'eseguibile non è firmato digitalmente: SmartScreen può mostrare un avviso («Ulteriori informazioni» › «Esegui comunque»).
 La disinstallazione (da Impostazioni › App) rimuove anche le attività pianificate e le voci del menu contestuale create dall'app.
 
@@ -41,7 +41,7 @@ La disinstallazione (da Impostazioni › App) rimuove anche le attività pianifi
 | | App di Windows | Rimozione delle app Store / preinstallate |
 | | Estensioni browser | Chrome, Edge, Brave, Vivaldi, Opera, Firefox |
 | | Disinstallazione forzata | Rimuove programmi danneggiati partendo da cartella o nome |
-| | Software Updater | Aggiornamento dei programmi tramite Windows Package Manager (winget) e installazione di nuovi programmi |
+| | Software Updater | Aggiornamento dei programmi tramite Windows Package Manager (winget), con avanzamento per ogni programma (MB scaricati, velocità, tempo rimanente, fase) e annullamento; installazione di nuovi programmi |
 | Strumenti | Distruggi dati | Rapido, casuale, DoD 5220.22-M, Gutmann; cancellazione spazio libero; voce nel menu contestuale |
 | | Recupero file | Lettura diretta della MFT NTFS, stima della probabilità di recupero, recupero dal Cestino |
 | Altro | Centro annullamento | Ogni modifica (registro, collegamenti, avvio, sospensione, correzioni, residui) è annullabile; gestione punti di ripristino |
@@ -85,7 +85,7 @@ The user interface is in Italian, with dark and light themes. The program requir
 
 ### Installation
 
-Download the installer from the [Releases](../../releases/latest) page and run it (`NovaTune-PC-Suite-Setup-1.0.0.exe`). You can choose the install folder; desktop and Start menu shortcuts are created.
+Download the installer from the [Releases](../../releases/latest) page and run it (`NovaTune-PC-Suite-Setup-<version>.exe`). You can choose the install folder; desktop and Start menu shortcuts are created.
 The executable is not digitally signed, so SmartScreen may show a warning ("More info" › "Run anyway").
 Uninstalling (Settings › Apps) also removes the scheduled tasks and context-menu entries created by the app.
 
@@ -110,7 +110,7 @@ Uninstalling (Settings › Apps) also removes the scheduled tasks and context-me
 | | Windows apps | Remove Store / preinstalled apps |
 | | Browser extensions | Chrome, Edge, Brave, Vivaldi, Opera, Firefox |
 | | Forced uninstall | Removes broken programs starting from their folder or name |
-| | Software Updater | Updates programs through Windows Package Manager (winget) and installs new ones |
+| | Software Updater | Updates programs through Windows Package Manager (winget) with per-program progress (MB downloaded, speed, time left, phase) and cancel; installs new ones |
 | Tools | Data shredder | Quick, random, DoD 5220.22-M, Gutmann; free-space wipe; Explorer context-menu entry |
 | | File recovery | Direct NTFS MFT reading, recovery-chance estimate, Recycle Bin restore |
 | Other | Undo Center | Every change (registry, shortcuts, startup, sleep, fixes, leftovers) can be undone; restore point management |

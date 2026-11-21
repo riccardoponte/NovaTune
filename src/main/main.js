@@ -159,7 +159,8 @@ ipcMain.handle('app:isAdmin', async () => { const r = await ps.exec('net.exe', [
 
 // ---------- lifecycle ----------
 const isHeadless = flag('--auto-maintenance') || flag('--driver-check');
-const gotLock = isHeadless ? true : app.requestSingleInstanceLock();
+// the development build ("npm start") must be able to run next to the installed app
+const gotLock = isHeadless || !app.isPackaged ? true : app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {

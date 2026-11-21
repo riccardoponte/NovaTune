@@ -192,6 +192,9 @@ select.input option { background: var(--panel); }
 .busy-pct { color: var(--faint); font-size: 12px; }
 .bar { width: 420px; max-width: 80%; height: 8px; background: var(--line); border-radius: 8px; overflow: hidden; }
 .bar-fill { height: 100%; width: 2%; background: var(--grad); border-radius: 8px; transition: width .4s ease; }
+.bar.indet { position: relative; }
+.bar.indet .bar-fill { position: absolute; width: 35% !important; animation: indet 1.3s ease-in-out infinite; }
+@keyframes indet { 0% { left: -35%; } 100% { left: 100%; } }
 .spinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty { text-align: center; padding: 60px 20px; }

@@ -2,6 +2,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const ps = require('../ps');
 const store = require('../store');
 
@@ -70,25 +71,193 @@ async function scan(opts = {}, ctx = {}) {
   return { winget: true, version: av.version, items };
 }
 
+// ---------------------------------------------------------------------------
+// Progress tracking.
+// When its output is redirected, winget prints no progress bar: it only writes
+// "Download <url>" and then "downloaded / hash verified". Real progress is measured
+// by watching the installer file growing in %TEMP%\WinGet, against the size
+// reported by the server for that URL.
+// ---------------------------------------------------------------------------
+let currentChild = null;
+let cancelRequested = false;
+
+async function remoteSize(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    let r = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: ctrl.signal });
+    let len = Number(r.headers.get('content-length')) || 0;
+    if (!len) {
+      r = await fetch(url, { headers: { Range: 'bytes=0-0' }, redirect: 'follow', signal: ctrl.signal });
+      const cr = r.headers.get('content-range');
+      if (cr && cr.includes('/')) len = Number(cr.split('/')[1]) || 0;
+      try { await r.body.cancel(); } catch (e) {}
+    }
+    return len;
+  } catch (e) { return 0; } finally { clearTimeout(t); }
+}
+
+function wingetTempDirs() {
+  const dirs = [path.join(os.tmpdir(), 'WinGet')];
+  const la = process.env.LOCALAPPDATA;
+  if (la) dirs.push(path.join(la, 'Temp', 'WinGet'));
+  return [...new Set(dirs.map((d) => d.toLowerCase()))].map((d) => dirs.find((x) => x.toLowerCase() === d));
+}
+
+/** Most recently written file in the winget download folders, modified after `since` */
+function newestDownload(since) {
+  let best = null;
+  const visit = (dir, depth) => {
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const e of ents) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { if (depth < 3 && e.name.toLowerCase() !== 'cache') visit(full, depth + 1); continue; }
+      let st;
+      try { st = fs.statSync(full); } catch (er) { continue; }
+      if (st.mtimeMs >= since - 1500 && (!best || st.mtimeMs > best.mtime)) best = { path: full, size: st.size, mtime: st.mtimeMs };
+    }
+  };
+  for (const d of wingetTempDirs()) visit(d, 0);
+  return best;
+}
+
+const FRIENDLY_CODES = {
+  '-1978335189': 'Nessun aggiornamento applicabile (già aggiornato)',
+  '-1978335212': 'Pacchetto non trovato',
+  '-1978335215': 'Più pacchetti corrispondono all\'ID',
+  '-1978334975': 'Il programma è in uso: chiudilo e riprova',
+  '-1978334967': 'Riavvio necessario per completare l\'installazione',
+  '-1978334966': 'Riavvio necessario per completare l\'installazione',
+  '-1978335226': 'Installazione non riuscita',
+  '-1978335221': 'Hash del programma di installazione non valido',
+  '-1978335224': 'Download non riuscito'
+};
+
+function friendly(code) {
+  if (code === 0) return 'Aggiornato';
+  const signed = code > 0x7FFFFFFF ? code - 0x100000000 : code;
+  return FRIENDLY_CODES[String(signed)] || `Non riuscito (codice 0x${(signed >>> 0).toString(16).toUpperCase()})`;
+}
+
+/** Runs one winget command for one package, reporting detailed progress events. */
+function runTracked(args, id, emit, timeout = 1800000) {
+  return new Promise((resolve) => {
+    let child;
+    try { child = spawn(wingetPath(), args, { windowsHide: true }); }
+    catch (e) { return resolve({ code: -1, out: '' }); }
+    currentChild = child;
+    let out = '';
+    let buf = '';
+    let dl = null;          // { url, since, total, last, lastT, speed }
+    let phase = 'prepare';
+    let lastLine = '';
+    const killer = setTimeout(() => killTree(child.pid), timeout);
+    const tick = () => {
+      if (!dl) return;
+      const f = newestDownload(dl.since);
+      const received = f ? f.size : 0;
+      const now = Date.now();
+      // average speed since the first byte arrived (file sizes grow in large blocks, so instant speed is jumpy)
+      if (received > 0 && !dl.firstT) dl.firstT = dl.lastT || now;
+      if (received > dl.last) dl.lastGrowth = now;
+      const elapsed = dl.firstT ? ((dl.lastGrowth || now) - dl.firstT) / 1000 : 0;
+      dl.speed = elapsed > 0.5 ? received / elapsed : 0;
+      dl.last = received; dl.lastT = now;
+      const complete = dl.total && received >= dl.total;
+      const percent = dl.total ? Math.min(complete ? 100 : 99, Math.round((received / dl.total) * 100)) : null;
+      emit({ id, phase: complete ? 'verify' : 'download', received, total: dl.total, speed: complete ? 0 : dl.speed, percent, file: dl.name, part: dl.part });
+    };
+    const timer = setInterval(tick, 400);
+    let parts = 0;
+    const onLine = (line) => {
+      const url = (line.match(/https?:\/\/\S+/) || [])[0];
+      if (url) {
+        parts++;
+        dl = { url, since: Date.now(), total: 0, last: 0, lastT: 0, speed: 0, name: decodeURIComponent(url.split('/').pop().split('?')[0]), part: parts };
+        phase = 'download';
+        const cur = dl;
+        remoteSize(url).then((n) => { cur.total = n; });
+        emit({ id, phase: 'download', received: 0, total: 0, percent: 0, file: dl.name, part: parts });
+        return;
+      }
+      if (/^[\s\-\\|/█▒]+$/.test(line)) return;
+      lastLine = line;
+      if (phase === 'download' && dl) {
+        // download finished (hash verification / file saved)
+        if (dl.total) emit({ id, phase: 'download', received: dl.total, total: dl.total, percent: 100, file: dl.name, part: dl.part });
+        dl = null;
+        phase = 'install';
+      }
+      if (phase === 'install' || phase === 'prepare') emit({ id, phase, message: line });
+    };
+    const onData = (d) => {
+      const s = d.toString('utf8');
+      out += s;
+      buf += s;
+      const lines = buf.split(/\r\n|\n|\r/);
+      buf = lines.pop();
+      lines.map((l) => l.trim()).filter(Boolean).forEach(onLine);
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    const finish = (code) => {
+      clearInterval(timer); clearTimeout(killer);
+      if (buf.trim()) onLine(buf.trim());
+      currentChild = null;
+      resolve({ code, out, lastLine });
+    };
+    child.on('error', () => finish(-1));
+    child.on('close', (code) => finish(code));
+  });
+}
+
+function killTree(pid) {
+  if (!pid) return;
+  try { spawn('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }); } catch (e) {}
+}
+
+function cancel() {
+  cancelRequested = true;
+  if (currentChild) killTree(currentChild.pid);
+  return { ok: true };
+}
+
+/**
+ * Updates the packages one after another.
+ * Emits progress events: { id, index, count, phase, percent, received, total, speed, message, overall }
+ * phase: queued | prepare | download | install | done | error | cancelled
+ */
 async function update(opts = {}, ctx = {}) {
   const ids = opts.ids || [];
   const results = [];
-  let i = 0;
-  for (const id of ids) {
-    i++;
-    if (ctx.progress) ctx.progress({ percent: Math.round(((i - 1) / ids.length) * 100), label: `Aggiornamento di ${id} (${i}/${ids.length})…`, id });
+  cancelRequested = false;
+  const emitFor = (i) => (p) => {
+    if (!ctx.progress) return;
+    let frac = 0;
+    if (p.phase === 'download' || p.phase === 'verify') frac = (p.percent != null ? p.percent / 100 : 0.1) * 0.7;
+    else if (p.phase === 'install') frac = 0.8;
+    else if (p.phase === 'done' || p.phase === 'error') frac = 1;
+    const overall = Math.round(((i + frac) / ids.length) * 100);
+    ctx.progress(Object.assign({ index: i, count: ids.length, percent: p.percent, overall, label: `Programma ${i + 1} di ${ids.length}` }, p, { percent: p.percent != null ? p.percent : undefined, overall }));
+  };
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const emit = emitFor(i);
+    if (cancelRequested) { results.push({ id, ok: false, cancelled: true, message: 'Annullato' }); emit({ id, phase: 'cancelled', message: 'Annullato' }); continue; }
+    emit({ id, phase: 'prepare', message: 'Ricerca del pacchetto…' });
     const args = ['upgrade', '--id', id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'];
     if (opts.includeUnknown) args.push('--include-unknown');
-    const r = await runWinget(args, (line) => {
-      const m = line.match(/(\d{1,3})\s?%/);
-      if (m && ctx.progress) ctx.progress({ percent: Math.round(((i - 1 + parseInt(m[1], 10) / 100) / ids.length) * 100), label: `Aggiornamento di ${id}: ${m[1]}%`, id });
-    }, 1800000);
-    const ok = r.code === 0;
-    results.push({ id, ok, code: r.code, log: r.out.split(/\r?\n/).filter((l) => l.trim() && !/^[\s\-\\|/█▒]+$/.test(l)).slice(-6).join('\n') });
+    const r = await runTracked(args, id, emit);
+    const cancelled = cancelRequested;
+    const ok = !cancelled && r.code === 0;
+    const message = cancelled ? 'Annullato' : friendly(r.code);
+    emit({ id, phase: cancelled ? 'cancelled' : ok ? 'done' : 'error', message });
+    results.push({ id, ok, cancelled, code: r.code, message, log: r.out.split(/\r\n|\n|\r/).filter((l) => l.trim() && !/^[\s\-\\|/█▒]+$/.test(l)).slice(-8).join('\n') });
   }
   const okN = results.filter((x) => x.ok).length;
   store.addStat('programsUpdated', okN, { type: 'software', items: okN });
-  return { results };
+  return { results, cancelled: cancelRequested };
 }
 
 async function search(opts) {
@@ -97,10 +266,9 @@ async function search(opts) {
 }
 
 async function install(opts, ctx = {}) {
-  const r = await runWinget(['install', '--id', opts.id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'], (line) => {
-    const m = line.match(/(\d{1,3})\s?%/); if (m && ctx.progress) ctx.progress({ percent: parseInt(m[1], 10), label: 'Installazione di ' + opts.id });
-  }, 1800000);
-  return { ok: r.code === 0, log: r.out.slice(-1500) };
+  cancelRequested = false;
+  const r = await runTracked(['install', '--id', opts.id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'], opts.id, (p) => ctx.progress && ctx.progress(p));
+  return { ok: r.code === 0, message: friendly(r.code), log: r.out.slice(-1500) };
 }
 
-module.exports = { scan, update, available, search, install, parseTables, runWinget };
+module.exports = { scan, update, cancel, available, search, install, parseTables, runWinget };
